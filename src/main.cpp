@@ -1,14 +1,11 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#define VERSION "\n\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.3.1 24.04.2020 \n\n"
+#define VERSION "\n\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.4.1 28.04.2020 \n\n"
 /*
-  Зажигание для мотоциклов ИЖ Юпитер 5 с оптическим датчиком
+  Зажигание для мотоциклов ИЖ с оптическим датчиком
 
-  Шторку устанавливать на выход из датчика примерно за 2 мм до ВМТ
+  Шторку устанавливать на выход из датчика примерно за 0,5-1 мм до ВМТ
   в дальнейшем УОЗ можно будет уменьшить программно с помощью кнопок
-
-  В скетче используется расчет для двухлепескового модулятора
-  с 30-тиградусной шторкой
 
   Таблица расчета УОЗ
   https://docs.google.com/spreadsheets/d/1s24BqFf9aOlpx6sPj3IqwU2ER_uwyi742p3u0c8BsjQ/edit?usp=sharing
@@ -25,6 +22,7 @@
 
   PIN_BTN_UOZ_DOWN
   - отвечает за вход в режим установки начального УОЗ (настройка шторки)
+  - в режиме настройки кторки переключает режим оповещения
   - в режиме корректировки УОЗ уменьшает смещение УОЗ
 
   Двойной сигнал при включении - режим корректировки УОЗ,
@@ -34,7 +32,7 @@
 
   Четверной сигнал при включении - режим установки УОЗ (настройка шторки)
   в этом режиме при сработке датчика будет пищать динамик и загораться
-  диод состояния
+  диод состояния, кнопка PIN_BTN_UOZ_DOWN переключает режим оповещения
 
   "Большое спасибо" можно отправить на Яндекс деньги
   https://money.yandex.ru/to/41001180308919
@@ -42,38 +40,34 @@
 
 //---- ОБЩИЕ НАСТРОЙКИ ----//
 /*
-  Ограничитель оборотов
-  работает только если MIN_TIME_180 больше 0
-  для ограничения обортов необходимо ввести
-  минимальное ВРЕМЯ между шторками в микросекундах
-  например для 2т с 2-хлепестковым модулятором
-  5000 мкс   = 6000 об/мин
-  6000 мкс   = 5000 об/мин
-  7500 мкс   = 4000 об/мин
-  10000 мкс  = 3000 об/мин
-  15000 мкс  = 2000 об/мин
-*/
-#define MIN_TIME_180 6000
+  Ограничитель оборотов, работает только если MIN_ROTATION_TIME больше 0
+  для ограничения обортов необходимо ввести, минимальное ВРЕМЯ оборота в
+  микросекундах.
 
-/**
-  Через сколько импульсов выключить режим вспышки
-  в ВМТ без опережения
-  1 оборот = 2 импульса с датчика
+  10000 мкс  = 6000 об/мин
+  12000 мкс  = 5000 об/мин
+  15000 мкс  = 4000 об/мин
+  20000 мкс  = 3000 об/мин
+  30000 мкс  = 2000 об/мин
 */
+#define MIN_ROTATION_TIME 12000
+
+// Через сколько оборотов выключить режим вспышки в ВМТ без опережения
 #define VMT_MODE_OFF_IMPULSE 100
 
-/**
-   Максимальное уменьшение УОЗ при корректировке
-   с помощью кнопок не рекомендуются значения
-   более 30 градусов, шаг коррекции = 5 градусов
-*/
-#define MAX_UOZ_OFFSET 15
-
+// Размер лепестка 30 либо 60 градусов
 #define MODULATOR 30
+// Количество лепестков модулятора
+#define PETALS 2
 
-//---- НАСТРОЙКА ПИНОВ
-#define PIN_BTN_UOZ_UP 4 // пин кнопки увеличения угла опережения
-#define PIN_BTN_UOZ_DOWN 7 // пин кнопки уменьшения угла опережения
+// Максимальное уменьшение УОЗ при корректировке с помощью кнопок.
+// Не рекомендуются значения более 30 градусов.
+// Шаг коррекции = 5 градусов
+#define MAX_UOZ_OFFSET 20
+
+//---- КОНСТАНТЫ ПИНОВ
+#define PIN_BTN_UOZ_UP 5 // пин кнопки увеличения угла опережения
+#define PIN_BTN_UOZ_DOWN 6 // пин кнопки уменьшения угла опережения
 
 #define PIN_LED_MODE 12 // пин светодиода индикации режима работы
 #define PIN_BUZZER A5 // пин динамика
@@ -109,24 +103,28 @@ bool g_bPressed = false;
 // ячейка памяти хрянящая uoz_offset
 #define uoz_offset_address 1
 
-// смещение угла опережения, чем значение больше тем меньше УОЗ
+// смещение УОЗ , чем значение больше тем меньше УОЗ
 int g_uoz_offset = 0;
 
-// переменные времени
+// момент прихода последней шторки
 volatile unsigned long g_cur_time = 0;
+
+// момент последнего полного оборота
 unsigned long g_last_time = 0;
 
-// время полуоборота,
-// оно же время между шторками,
-// оно же время между сигналами
-unsigned long g_time_180 = 0;
+// время полного оборота КВ
+unsigned long g_rotation_time = 0;
 
-// время задержки относительно ВХОДА шторки,
+// расчетное время задержки относительно ВХОДА шторки,
 // оно же определяет УОЗ
 unsigned long g_delay_time = 0;
 
-// время простоя катушки
+// расчетное время простоя катушки
 unsigned long g_bobbin_off_time = 0;
+
+// используется для определения полного оборота
+// когда будет равно количеству PETALS значит полный оборот
+unsigned int g_rotation_counter = 0;
 
 void blink();
 void oneBeep();
@@ -165,19 +163,20 @@ void setup() {
   }
 
   vmtMode(true);
+
   int uoz_offset = EEPROM.read(uoz_offset_address);
   g_uoz_offset = constrain(uoz_offset, 0, MAX_UOZ_OFFSET);
 
   Serial.print("UOZ OFFSET: -");
   Serial.println(g_uoz_offset);
 
-  Serial.print("MIN_TIME_180: ");
-  Serial.print(MIN_TIME_180);
+  Serial.print("MIN_ROTATION_TIME: ");
+  Serial.print(MIN_ROTATION_TIME);
   Serial.println(" microseconds");
 
-#if MIN_TIME_180 != 0
+#if MIN_ROTATION_TIME != 0
   Serial.print("RPM LIMIT: ");
-  Serial.println((unsigned long)30000000 / MIN_TIME_180);
+  Serial.println((unsigned long)60000000 / MIN_ROTATION_TIME);
 #else
   Serial.println("RPM UNLIMIT !!!");
 #endif
@@ -189,7 +188,7 @@ void setup() {
 void loop() {
   if (g_state == 1) {
 
-    if (g_vmt_mode) { // режим искры в ВМТ по границе выхода шторки
+    if (g_vmt_mode) { // режим искры в ВМТ по границе ВЫХОДА шторки
       if (g_installation_mode == true) { // режим настройки шторки
         static bool beepMode = false;
         if (digitalRead(PIN_BTN_UOZ_DOWN) == LOW) {
@@ -220,10 +219,9 @@ void loop() {
 
     } else { // нормальный режим работы с УОЗ
 
-#if MIN_TIME_180 != 0
-      if (g_time_180 > MIN_TIME_180) {
+#if MIN_ROTATION_TIME != 0
+      if (g_rotation_time > MIN_ROTATION_TIME) {
 #endif
-
         // запаздывание искры
         if (g_delay_time > 16382) {
           delay((unsigned long)(g_delay_time / 1000));
@@ -240,147 +238,149 @@ void loop() {
         }
         bobbinOn; // заряд
 
-#if MIN_TIME_180 != 0
+#if MIN_ROTATION_TIME != 0
       }
 #endif
     }
     // здесь можно выполнить некоторые действия
     // пока еще не пришла следующая шторка
 
-    // расчет времени полуоборота
-    g_time_180 = (unsigned long)(g_cur_time - g_last_time);
+    g_rotation_counter++;
+    if (g_rotation_counter == PETALS) { // полный оборот
+      g_rotation_counter = 0;
+      // расчет времени оборота
+      g_rotation_time = (unsigned long)(g_cur_time - g_last_time);
 
-// выбор времени задержки вспышки относительно
-// ВХОДА шторки для двухлепесткового модулятора,
-// чем меньше задержка тем больше УОЗ
-// для 30 - градусной шторки
+      // выбор времени задержки вспышки относительно
+      // ВХОДА шторки модулятора, чем меньше задержка тем больше УОЗ
 
-// ######################################################
-// ######################################################
-// СЮДА ВСТАВЛЯЕТСЯ КОД ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
+      // ######################################################
+      // ######################################################
+      // СЮДА ВСТАВЛЯЕТСЯ КОД ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
 #if MODULATOR == 30
-    if (g_time_180 < 5000) {
-      g_delay_time = 123; // RPM 6000 UOZ 25,58
-    } else if (g_time_180 < 5455) {
-      g_delay_time = 155; // RPM 5500 UOZ 24,88
-    } else if (g_time_180 < 6000) {
-      g_delay_time = 195; // RPM 5000 UOZ 24,15
-    } else if (g_time_180 < 6667) {
-      g_delay_time = 245; // RPM 4500 UOZ 23,39
-    } else if (g_time_180 < 7500) {
-      g_delay_time = 308; // RPM 4000 UOZ 22,6
-    } else if (g_time_180 < 8571) {
-      g_delay_time = 392; // RPM 3500 UOZ 21,76
-    } else if (g_time_180 < 9231) {
-      g_delay_time = 458; // RPM 3250 UOZ 21,07
-    } else if (g_time_180 < 10000) {
-      g_delay_time = 535; // RPM 3000 UOZ 20,37
-    } else if (g_time_180 < 10909) {
-      g_delay_time = 627; // RPM 2750 UOZ 19,65
-    } else if (g_time_180 < 12000) {
-      g_delay_time = 740; // RPM 2500 UOZ 18,9
-    } else if (g_time_180 < 13333) {
-      g_delay_time = 879; // RPM 2250 UOZ 18,13
-    } else if (g_time_180 < 15000) {
-      g_delay_time = 1057; // RPM 2000 UOZ 17,32
-    } else if (g_time_180 < 16216) {
-      g_delay_time = 1207; // RPM 1850 UOZ 16,6
-    } else if (g_time_180 < 17647) {
-      g_delay_time = 1385; // RPM 1700 UOZ 15,87
-    } else if (g_time_180 < 19355) {
-      g_delay_time = 1601; // RPM 1550 UOZ 15,11
-    } else if (g_time_180 < 21429) {
-      g_delay_time = 1866; // RPM 1400 UOZ 14,33
-    } else if (g_time_180 < 24000) {
-      g_delay_time = 2197; // RPM 1250 UOZ 13,52
-    } else if (g_time_180 < 27273) {
-      g_delay_time = 2626; // RPM 1100 UOZ 12,67
-    } else if (g_time_180 < 31579) {
-      g_delay_time = 3198; // RPM 950 UOZ 11,77
-    } else if (g_time_180 < 37500) {
-      g_delay_time = 4000; // RPM 800 UOZ 10,8
-    } else if (g_time_180 < 46154) {
-      g_delay_time = 5197; // RPM 650 UOZ 9,73
-    } else if (g_time_180 < 60000) {
-      g_delay_time = 7170; // RPM 500 UOZ 8,49
-    } else if (g_time_180 < 85714) {
-      g_delay_time = 10986; // RPM 350 UOZ 6,93
-    } else if (g_time_180 < 150000) {
-      g_delay_time = 21158; // RPM 200 UOZ 4,61
-    } else if (g_time_180 < 600000) {
-      g_delay_time = 95000; // RPM 50 UOZ 1,5
-    }
+      if (g_rotation_time < 10000) {
+        g_delay_time = 123; // RPM 6000 UOZ +25,58
+      } else if (g_rotation_time < 10909) {
+        g_delay_time = 155; // RPM 5500 UOZ +24,88
+      } else if (g_rotation_time < 12000) {
+        g_delay_time = 195; // RPM 5000 UOZ +24,15
+      } else if (g_rotation_time < 13333) {
+        g_delay_time = 245; // RPM 4500 UOZ +23,39
+      } else if (g_rotation_time < 15000) {
+        g_delay_time = 308; // RPM 4000 UOZ +22,6
+      } else if (g_rotation_time < 17143) {
+        g_delay_time = 392; // RPM 3500 UOZ +21,76
+      } else if (g_rotation_time < 18462) {
+        g_delay_time = 458; // RPM 3250 UOZ +21,07
+      } else if (g_rotation_time < 20000) {
+        g_delay_time = 535; // RPM 3000 UOZ +20,37
+      } else if (g_rotation_time < 21818) {
+        g_delay_time = 627; // RPM 2750 UOZ +19,65
+      } else if (g_rotation_time < 24000) {
+        g_delay_time = 740; // RPM 2500 UOZ +18,9
+      } else if (g_rotation_time < 26667) {
+        g_delay_time = 879; // RPM 2250 UOZ +18,13
+      } else if (g_rotation_time < 30000) {
+        g_delay_time = 1057; // RPM 2000 UOZ +17,32
+      } else if (g_rotation_time < 32432) {
+        g_delay_time = 1207; // RPM 1850 UOZ +16,6
+      } else if (g_rotation_time < 35294) {
+        g_delay_time = 1385; // RPM 1700 UOZ +15,87
+      } else if (g_rotation_time < 38710) {
+        g_delay_time = 1601; // RPM 1550 UOZ +15,11
+      } else if (g_rotation_time < 42857) {
+        g_delay_time = 1865; // RPM 1400 UOZ +14,33
+      } else if (g_rotation_time < 48000) {
+        g_delay_time = 2197; // RPM 1250 UOZ +13,52
+      } else if (g_rotation_time < 54545) {
+        g_delay_time = 2626; // RPM 1100 UOZ +12,67
+      } else if (g_rotation_time < 63158) {
+        g_delay_time = 3198; // RPM 950 UOZ +11,77
+      } else if (g_rotation_time < 75000) {
+        g_delay_time = 4000; // RPM 800 UOZ +10,8
+      } else if (g_rotation_time < 92308) {
+        g_delay_time = 5197; // RPM 650 UOZ +9,73
+      } else if (g_rotation_time < 120000) {
+        g_delay_time = 7170; // RPM 500 UOZ +8,49
+      } else if (g_rotation_time < 171429) {
+        g_delay_time = 10986; // RPM 350 UOZ +6,93
+      } else if (g_rotation_time < 300000) {
+        g_delay_time = 21158; // RPM 200 UOZ +4,61
+      } else if (g_rotation_time < 1200000) {
+        g_delay_time = 95000; // RPM 50 UOZ +1,5
+      }
 #else
-    if (g_time_180 < 5000) {
-      g_delay_time = 956; // RPM 6000 UOZ 25,58
-    } else if (g_time_180 < 5455) {
-      g_delay_time = 1064; // RPM 5500 UOZ 24,88
-    } else if (g_time_180 < 6000) {
-      g_delay_time = 1195; // RPM 5000 UOZ 24,15
-    } else if (g_time_180 < 6667) {
-      g_delay_time = 1356; // RPM 4500 UOZ 23,39
-    } else if (g_time_180 < 7500) {
-      g_delay_time = 1558; // RPM 4000 UOZ 22,6
-    } else if (g_time_180 < 8571) {
-      g_delay_time = 1821; // RPM 3500 UOZ 21,76
-    } else if (g_time_180 < 9231) {
-      g_delay_time = 1996; // RPM 3250 UOZ 21,07
-    } else if (g_time_180 < 10000) {
-      g_delay_time = 2202; // RPM 3000 UOZ 20,37
-    } else if (g_time_180 < 10909) {
-      g_delay_time = 2445; // RPM 2750 UOZ 19,65
-    } else if (g_time_180 < 12000) {
-      g_delay_time = 2740; // RPM 2500 UOZ 18,9
-    } else if (g_time_180 < 13333) {
-      g_delay_time = 3101; // RPM 2250 UOZ 18,13
-    } else if (g_time_180 < 15000) {
-      g_delay_time = 3557; // RPM 2000 UOZ 17,32
-    } else if (g_time_180 < 16216) {
-      g_delay_time = 3910; // RPM 1850 UOZ 16,6
-    } else if (g_time_180 < 17647) {
-      g_delay_time = 4326; // RPM 1700 UOZ 15,87
-    } else if (g_time_180 < 19355) {
-      g_delay_time = 4827; // RPM 1550 UOZ 15,11
-    } else if (g_time_180 < 21429) {
-      g_delay_time = 5437; // RPM 1400 UOZ 14,33
-    } else if (g_time_180 < 24000) {
-      g_delay_time = 6197; // RPM 1250 UOZ 13,52
-    } else if (g_time_180 < 27273) {
-      g_delay_time = 7171; // RPM 1100 UOZ 12,67
-    } else if (g_time_180 < 31579) {
-      g_delay_time = 8461; // RPM 950 UOZ 11,77
-    } else if (g_time_180 < 37500) {
-      g_delay_time = 10250; // RPM 800 UOZ 10,8
-    } else if (g_time_180 < 46154) {
-      g_delay_time = 12890; // RPM 650 UOZ 9,73
-    } else if (g_time_180 < 60000) {
-      g_delay_time = 17170; // RPM 500 UOZ 8,49
-    } else if (g_time_180 < 85714) {
-      g_delay_time = 25271; // RPM 350 UOZ 6,93
-    } else if (g_time_180 < 150000) {
-      g_delay_time = 46158; // RPM 200 UOZ 4,61
-    } else if (g_time_180 < 600000) {
-      g_delay_time = 195000; // RPM 50 UOZ 1,5
-    }
+      if (g_rotation_time < 10000) {
+        g_delay_time = 956; // RPM 6000 UOZ +25,58
+      } else if (g_rotation_time < 10909) {
+        g_delay_time = 1064; // RPM 5500 UOZ +24,88
+      } else if (g_rotation_time < 12000) {
+        g_delay_time = 1195; // RPM 5000 UOZ +24,15
+      } else if (g_rotation_time < 13333) {
+        g_delay_time = 1356; // RPM 4500 UOZ +23,39
+      } else if (g_rotation_time < 15000) {
+        g_delay_time = 1558; // RPM 4000 UOZ +22,6
+      } else if (g_rotation_time < 17143) {
+        g_delay_time = 1821; // RPM 3500 UOZ +21,76
+      } else if (g_rotation_time < 18462) {
+        g_delay_time = 1996; // RPM 3250 UOZ +21,07
+      } else if (g_rotation_time < 20000) {
+        g_delay_time = 2202; // RPM 3000 UOZ +20,37
+      } else if (g_rotation_time < 21818) {
+        g_delay_time = 2445; // RPM 2750 UOZ +19,65
+      } else if (g_rotation_time < 24000) {
+        g_delay_time = 2740; // RPM 2500 UOZ +18,9
+      } else if (g_rotation_time < 26667) {
+        g_delay_time = 3102; // RPM 2250 UOZ +18,13
+      } else if (g_rotation_time < 30000) {
+        g_delay_time = 3557; // RPM 2000 UOZ +17,32
+      } else if (g_rotation_time < 32432) {
+        g_delay_time = 3910; // RPM 1850 UOZ +16,6
+      } else if (g_rotation_time < 35294) {
+        g_delay_time = 4326; // RPM 1700 UOZ +15,87
+      } else if (g_rotation_time < 38710) {
+        g_delay_time = 4827; // RPM 1550 UOZ +15,11
+      } else if (g_rotation_time < 42857) {
+        g_delay_time = 5437; // RPM 1400 UOZ +14,33
+      } else if (g_rotation_time < 48000) {
+        g_delay_time = 6197; // RPM 1250 UOZ +13,52
+      } else if (g_rotation_time < 54545) {
+        g_delay_time = 7171; // RPM 1100 UOZ +12,67
+      } else if (g_rotation_time < 63158) {
+        g_delay_time = 8461; // RPM 950 UOZ +11,77
+      } else if (g_rotation_time < 75000) {
+        g_delay_time = 10250; // RPM 800 UOZ +10,8
+      } else if (g_rotation_time < 92308) {
+        g_delay_time = 12890; // RPM 650 UOZ +9,73
+      } else if (g_rotation_time < 120000) {
+        g_delay_time = 17170; // RPM 500 UOZ +8,49
+      } else if (g_rotation_time < 171429) {
+        g_delay_time = 25271; // RPM 350 UOZ +6,93
+      } else if (g_rotation_time < 300000) {
+        g_delay_time = 46158; // RPM 200 UOZ +4,61
+      } else if (g_rotation_time < 1200000) {
+        g_delay_time = 195000; // RPM 50 UOZ +1,5
+      }
 #endif
-    // КОНЕЦ БЛОКА КОДА ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
-    // ######################################################
-    // ######################################################
+      // КОНЕЦ БЛОКА КОДА ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
+      // ######################################################
+      // ######################################################
 
-    // если ручная корректировка УОЗ не равна 0
-    // то добавляем ко времени задержки смещение УОЗ
-    // таким образом уменьшая УОЗ
-    if (g_uoz_offset != 0) {
-      g_delay_time +=
-          (unsigned long)(((unsigned long)g_time_180 * g_uoz_offset) / 180);
+      // если ручная корректировка УОЗ не равна 0
+      // то добавляем ко времени задержки смещение УОЗ
+      // таким образом уменьшая УОЗ
+      if (g_uoz_offset != 0) {
+        g_delay_time +=
+            (unsigned long)(((unsigned long)g_rotation_time * g_uoz_offset) /
+                            360);
+      }
+
+      // расчет времени простоя катушки
+      // время оборота КВ (360 градусов) делим на 6
+      // получаем время простоя соответствующее 60 градусам
+      g_bobbin_off_time = (unsigned long)(g_rotation_time / 6);
+      g_last_time = g_cur_time;
     }
-
-    // расчет времени простоя катушки
-    // время полуоборота КВ (180 градусов) делим на 3
-    // получаем время простоя соответствующее 60 градусам
-    g_bobbin_off_time = (unsigned long)(g_time_180 / 3);
-
-    g_last_time = g_cur_time;
     g_state = 0;
   }
 
