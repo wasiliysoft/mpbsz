@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#define VERSION "\n\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.4.1 28.04.2020 \n\n"
+#define VERSION "\n\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.4.2 30.04.2020 \n\n"
 /*
   Зажигание для мотоциклов ИЖ с оптическим датчиком
 
@@ -55,8 +55,6 @@
 // Через сколько оборотов выключить режим вспышки в ВМТ без опережения
 #define VMT_MODE_OFF_IMPULSE 100
 
-// Размер лепестка 30 либо 60 градусов
-#define MODULATOR 30
 // Количество лепестков модулятора
 #define PETALS 2
 
@@ -257,59 +255,6 @@ void loop() {
       // ######################################################
       // ######################################################
       // СЮДА ВСТАВЛЯЕТСЯ КОД ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
-#if MODULATOR == 30
-      if (g_rotation_time < 10000) {
-        g_delay_time = 123; // RPM 6000 UOZ +25,58
-      } else if (g_rotation_time < 10909) {
-        g_delay_time = 155; // RPM 5500 UOZ +24,88
-      } else if (g_rotation_time < 12000) {
-        g_delay_time = 195; // RPM 5000 UOZ +24,15
-      } else if (g_rotation_time < 13333) {
-        g_delay_time = 245; // RPM 4500 UOZ +23,39
-      } else if (g_rotation_time < 15000) {
-        g_delay_time = 308; // RPM 4000 UOZ +22,6
-      } else if (g_rotation_time < 17143) {
-        g_delay_time = 392; // RPM 3500 UOZ +21,76
-      } else if (g_rotation_time < 18462) {
-        g_delay_time = 458; // RPM 3250 UOZ +21,07
-      } else if (g_rotation_time < 20000) {
-        g_delay_time = 535; // RPM 3000 UOZ +20,37
-      } else if (g_rotation_time < 21818) {
-        g_delay_time = 627; // RPM 2750 UOZ +19,65
-      } else if (g_rotation_time < 24000) {
-        g_delay_time = 740; // RPM 2500 UOZ +18,9
-      } else if (g_rotation_time < 26667) {
-        g_delay_time = 879; // RPM 2250 UOZ +18,13
-      } else if (g_rotation_time < 30000) {
-        g_delay_time = 1057; // RPM 2000 UOZ +17,32
-      } else if (g_rotation_time < 32432) {
-        g_delay_time = 1207; // RPM 1850 UOZ +16,6
-      } else if (g_rotation_time < 35294) {
-        g_delay_time = 1385; // RPM 1700 UOZ +15,87
-      } else if (g_rotation_time < 38710) {
-        g_delay_time = 1601; // RPM 1550 UOZ +15,11
-      } else if (g_rotation_time < 42857) {
-        g_delay_time = 1865; // RPM 1400 UOZ +14,33
-      } else if (g_rotation_time < 48000) {
-        g_delay_time = 2197; // RPM 1250 UOZ +13,52
-      } else if (g_rotation_time < 54545) {
-        g_delay_time = 2626; // RPM 1100 UOZ +12,67
-      } else if (g_rotation_time < 63158) {
-        g_delay_time = 3198; // RPM 950 UOZ +11,77
-      } else if (g_rotation_time < 75000) {
-        g_delay_time = 4000; // RPM 800 UOZ +10,8
-      } else if (g_rotation_time < 92308) {
-        g_delay_time = 5197; // RPM 650 UOZ +9,73
-      } else if (g_rotation_time < 120000) {
-        g_delay_time = 7170; // RPM 500 UOZ +8,49
-      } else if (g_rotation_time < 171429) {
-        g_delay_time = 10986; // RPM 350 UOZ +6,93
-      } else if (g_rotation_time < 300000) {
-        g_delay_time = 21158; // RPM 200 UOZ +4,61
-      } else if (g_rotation_time < 1200000) {
-        g_delay_time = 95000; // RPM 50 UOZ +1,5
-      }
-#else
       if (g_rotation_time < 10000) {
         g_delay_time = 956; // RPM 6000 UOZ +25,58
       } else if (g_rotation_time < 10909) {
@@ -361,7 +306,6 @@ void loop() {
       } else if (g_rotation_time < 1200000) {
         g_delay_time = 195000; // RPM 50 UOZ +1,5
       }
-#endif
       // КОНЕЦ БЛОКА КОДА ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
       // ######################################################
       // ######################################################
