@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#define VERSION "\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.4.4 02.05.2020\n"
+#define VERSION "\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.4.3 01.05.2020\n"
 /*
   Зажигание для мотоциклов ИЖ с оптическим датчиком
 
@@ -39,7 +39,7 @@
 */
 
 // Ограничитель оборотов, работает только если не равен 0
-#define MAX_RPM 2000
+#define MAX_RPM 5000
 
 // Через сколько оборотов выключить режим вспышки в ВМТ без опережения
 #define VMT_MODE_OFF_IMPULSE 100
@@ -95,15 +95,12 @@ volatile bool g_state = 0;
 // используется для определения полного оборота
 // когда будет равно количеству PETALS значит полный оборот
 unsigned int in_count = 0;
+unsigned int p = 0;
 
 unsigned long cur_time = 0;
 unsigned long last_time = 0;
-
-unsigned long time_off = 0;
-unsigned long time_on = 0;
-
 // время полного оборота КВ
-volatile unsigned long g_rotation_time = 92308;
+unsigned long g_rotation_time = 0;
 
 // режим искры в ВМТ без задержек, по границе ВЫХОДА шторки
 bool g_vmt_mode = true;
@@ -141,7 +138,6 @@ void setup() {
   pinMode(PIN_LED_MODE, OUTPUT);
   pinMode(PIN_BUZZER, OUTPUT);
   pinMode(3, INPUT_PULLUP);
-  pinMode(4, INPUT_PULLUP);
 
   pinMode(PIN_BTN_UOZ_UP, INPUT_PULLUP);
   pinMode(PIN_BTN_UOZ_DOWN, INPUT_PULLUP);
@@ -193,44 +189,34 @@ void loop() {
     }
   }
 
-  while (g_vmt_mode) { // режим искры в ВМТ по границе ВЫХОДА шторки
-    if (g_state == 1) {
-      bobbinOffVMT; // вспышка
-      delay(4); // продолжительность простоя катушки
-      bobbinOnVMT; // заряд
-      // проверка, не пора ли вЫключить режим ВМТ
-
-      if (++in_count > VMT_MODE_OFF_IMPULSE) {
-        vmtMode(false);
-        in_count = 0;
-      }
-      g_state = 0;
-    }
-    //  Блок работы с кнопками корректировки УОЗ
-    if (g_btn_uoz_enabled) {
-      btnTick();
-    }
-  }
-
   for (;;) { // нормальный режим работы с УОЗ
-    cur_time = micros();
-    static bool bOffIsPending = true;
-    static bool bOnIsPending = true;
-    if (cur_time > time_off && bOffIsPending) {
-      bobbinOff; // вспышка
-      bOffIsPending = false;
-    }
-    if (cur_time > time_on && bOnIsPending) {
-      bobbinOn; // заряд
-      bOnIsPending = false;
-    }
-
     if (g_state == 1) {
-      if (++in_count == PETALS) {
-        in_count = 0;
-        g_state = 0;
-        g_rotation_time = cur_time - last_time;
+      if (g_vmt_mode) { // режим искры в ВМТ по границе ВЫХОДА шторки
+        bobbinOffVMT; // вспышка
+        delay(4); // продолжительность простоя катушки
+        bobbinOnVMT; // заряд
+        // проверка, не пора ли вЫключить режим ВМТ
+        if (++in_count > VMT_MODE_OFF_IMPULSE) {
+          vmtMode(false);
+          in_count = 0;
+        }
+      } else { // нормальный режим работы с УОЗ
+        Serial.println((unsigned long)(g_rotation_time), DEC);
+        RPM_IF
+        delayMicroseconds(g_delay_time);
+        bobbinOff; // вспышка
+        delayMicroseconds(g_bobbin_off_time);
+        bobbinOn; // заряд
+        RPM_FI
+      }
+      if (++p == PETALS) {
+        cur_time = micros();
+        g_rotation_time = (unsigned long)(cur_time - last_time);
+        g_rotation_time =
+            constrain(g_rotation_time, (MIN_ROTATION_TIME - 10), 100000);
         last_time = cur_time;
+        p = 0;
+
         // выбор времени задержки вспышки относительно
         // ВХОДА шторки модулятора, чем меньше задержка тем больше УОЗ
 
@@ -279,14 +265,8 @@ void loop() {
           g_delay_time = 10250; // RPM 800 UOZ +10,8
         } else if (g_rotation_time < 92308) {
           g_delay_time = 12890; // RPM 650 UOZ +9,73
-        } else if (g_rotation_time < 120000) {
-          g_delay_time = 17170; // RPM 500 UOZ +8,49
-        } else if (g_rotation_time < 171429) {
-          g_delay_time = 25271; // RPM 350 UOZ +6,93
-        } else if (g_rotation_time < 300000) {
-          g_delay_time = 46158; // RPM 200 UOZ +4,61
-        } else if (g_rotation_time < 1200000) {
-          g_delay_time = 195000; // RPM 50 UOZ +1,5
+        } else {
+          g_delay_time = 16383;
         }
         // КОНЕЦ БЛОКА КОДА ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
         // ######################################################
@@ -295,22 +275,17 @@ void loop() {
         // Отнимаем от времени задержки смещение УОЗ
         // таким образом корректируя УОЗ
         g_delay_time -= (long)(g_rotation_time * uoz_correction_koeff);
+        g_delay_time = constrain(g_delay_time, 1, 16383);
 
         // расчет времени простоя катушки
         // время оборота КВ (360 градусов) делим на 6
         // получаем время простоя соответствующее 60 градусам
         // g_bobbin_off_time = (long)(g_rotation_time / 6);
-        // делаем сдвиг на 2, получаем время 360/4 = 90 градусов
-        g_bobbin_off_time = g_rotation_time >> 2;
+        // делаем сдвиг на 2, получаем время 360/8 = 45 градусов
+        g_bobbin_off_time = g_rotation_time / 6;
+        g_bobbin_off_time = constrain(g_bobbin_off_time, 1, 16383);
       }
-      // Serial.println(60000000 / g_rotation_time);
-
-      RPM_IF
-      time_off = cur_time + g_delay_time;
-      time_on = cur_time + g_bobbin_off_time;
-      bOffIsPending = true;
-      bOnIsPending = true;
-      RPM_FI
+      g_state = 0;
     }
 
     //  Блок работы с кнопками корректировки УОЗ
@@ -414,11 +389,11 @@ void blink() { g_state = 1; }
    Блок вспомогательных функций
 */
 void oneBeep() {
-  digitalWrite(PIN_LED_MODE, HIGH);
-  digitalWrite(PIN_BUZZER, HIGH);
-  delay(40);
-  digitalWrite(PIN_LED_MODE, LOW);
-  digitalWrite(PIN_BUZZER, LOW);
+  // digitalWrite(PIN_LED_MODE, HIGH);
+  // digitalWrite(PIN_BUZZER, HIGH);
+  // delay(40);
+  // digitalWrite(PIN_LED_MODE, LOW);
+  // digitalWrite(PIN_BUZZER, LOW);
 }
 
 void doubleBeep() {
