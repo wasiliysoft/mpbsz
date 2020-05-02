@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#define VERSION "\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.4.3 01.05.2020\n"
+#define VERSION "\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.5.0 02.05.2020\n"
 /*
   Зажигание для мотоциклов ИЖ с оптическим датчиком
 
@@ -105,11 +105,14 @@ unsigned long g_rotation_time = 0;
 // режим искры в ВМТ без задержек, по границе ВЫХОДА шторки
 bool g_vmt_mode = true;
 
+// флаг настройки шторки, будет пищать когда шторка в модуляторе
+bool g_installation_mode = false;
+
 // флаг доступности кнопок корректировки УОЗ
 bool g_btn_uoz_enabled = false;
 
-// флаг настройки шторки, будет пищать когда шторка в модуляторе
-bool g_installation_mode = false;
+// режим формирования УОЗ (-1|0|1)
+int uoz_mode = 0;
 
 // расчетное время задержки относительно ВХОДА шторки,
 // оно же определяет УОЗ
@@ -118,16 +121,12 @@ unsigned long g_delay_time = 0;
 // расчетное время простоя катушки
 unsigned long g_bobbin_off_time = 0;
 
-int uoz_correction = 0;
-float uoz_correction_koeff = 0.0f;
-
 void blink();
 void oneBeep();
 void doubleBeep();
 void vmtMode(bool newState);
 void installation_mode();
 void btnTick();
-void recalcCorrectionKoeff();
 
 void setup() {
   Serial.begin(115200);
@@ -161,14 +160,10 @@ void setup() {
     delay(2000);
   }
 
-  uoz_correction = EEPROM.read(1);
-  uoz_correction = constrain(uoz_correction, -10, 10);
-  Serial.print("UOZ correction: ");
-  Serial.println(uoz_correction, DEC);
-
-  recalcCorrectionKoeff();
-  Serial.print("UOZ correction koeff: ");
-  Serial.println(uoz_correction_koeff, 7);
+  uoz_mode = EEPROM.read(1);
+  uoz_mode = constrain(uoz_mode, -1, 1);
+  Serial.print("UOZ mode : ");
+  Serial.println(uoz_mode, DEC);
 
   Serial.print("RPM LIMIT: ");
   Serial.println(MAX_RPM, DEC);
@@ -201,19 +196,30 @@ void loop() {
           in_count = 0;
         }
       } else { // нормальный режим работы с УОЗ
-        Serial.println((unsigned long)(g_rotation_time), DEC);
+        // Serial.println((unsigned long)(g_rotation_time), DEC);
         RPM_IF
-        delayMicroseconds(g_delay_time);
+        if (g_delay_time > 16383) {
+          delay((unsigned long)g_delay_time / 1000);
+        } else {
+          delayMicroseconds(g_delay_time);
+        }
         bobbinOff; // вспышка
-        delayMicroseconds(g_bobbin_off_time);
+
+        if (g_bobbin_off_time > 16383) {
+          delay((unsigned long)g_bobbin_off_time / 1000);
+        } else {
+          delayMicroseconds(g_bobbin_off_time);
+        }
         bobbinOn; // заряд
         RPM_FI
       }
       if (++p == PETALS) {
         cur_time = micros();
         g_rotation_time = (unsigned long)(cur_time - last_time);
-        g_rotation_time =
-            constrain(g_rotation_time, (MIN_ROTATION_TIME - 10), 100000);
+        if (g_rotation_time > 100000) {
+          vmtMode(true); // переводим в режим ВМТ
+        }
+
         last_time = cur_time;
         p = 0;
 
@@ -265,71 +271,29 @@ void loop() {
           g_delay_time = 10250; // RPM 800 UOZ +10,8
         } else if (g_rotation_time < 92308) {
           g_delay_time = 12890; // RPM 650 UOZ +9,73
-        } else {
-          g_delay_time = 16383;
+        } else if (g_rotation_time < 120000) {
+          g_delay_time = 17170; // RPM 500 UOZ +8,49
+        } else if (g_rotation_time < 171429) {
+          g_delay_time = 25271; // RPM 350 UOZ +6,93
+        } else if (g_rotation_time < 300000) {
+          g_delay_time = 46158; // RPM 200 UOZ +4,61
+        } else if (g_rotation_time < 1200000) {
+          g_delay_time = 195000; // RPM 50 UOZ +1,5
         }
+
         // КОНЕЦ БЛОКА КОДА ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
         // ######################################################
         // ######################################################
-
-        // Отнимаем от времени задержки смещение УОЗ
-        // таким образом корректируя УОЗ
-        g_delay_time -= (long)(g_rotation_time * uoz_correction_koeff);
-        g_delay_time = constrain(g_delay_time, 1, 16383);
 
         // расчет времени простоя катушки
         // время оборота КВ (360 градусов) делим на 6
         // получаем время простоя соответствующее 60 градусам
         // g_bobbin_off_time = (long)(g_rotation_time / 6);
-        // делаем сдвиг на 2, получаем время 360/8 = 45 градусов
-        g_bobbin_off_time = g_rotation_time / 6;
-        g_bobbin_off_time = constrain(g_bobbin_off_time, 1, 16383);
+        // делаем сдвиг на 3, получаем время 360/8 = 45 градусов
+        g_bobbin_off_time = g_rotation_time >> 3;
       }
       g_state = 0;
     }
-
-    //  Блок работы с кнопками корректировки УОЗ
-    if (g_btn_uoz_enabled) {
-      btnTick();
-    }
-  }
-}
-
-void recalcCorrectionKoeff() {
-  switch (uoz_correction) {
-  case -10:
-    uoz_correction_koeff = -0.0277778;
-    break;
-  case -8:
-    uoz_correction_koeff = -0.0222222;
-    break;
-  case -6:
-    uoz_correction_koeff = -0.0166667;
-    break;
-  case -4:
-    uoz_correction_koeff = -0.0111111;
-    break;
-  case -2:
-    uoz_correction_koeff = -0.0055556;
-    break;
-  case 2:
-    uoz_correction_koeff = 0.0055556;
-    break;
-  case 4:
-    uoz_correction_koeff = 0.0111111;
-    break;
-  case 6:
-    uoz_correction_koeff = 0.0166667;
-    break;
-  case 8:
-    uoz_correction_koeff = 0.0222222;
-    break;
-  case 10:
-    uoz_correction_koeff = 0.0277778;
-    break;
-  default:
-    uoz_correction_koeff = 0.0;
-    break;
   }
 }
 
@@ -356,26 +320,19 @@ void btnTick() {
   if (~(PIND >> PIN_BTN_UOZ_DOWN) & B00000001) { // LOW
     if ((millis() - last_pressed) > 1000) {
       last_pressed = millis();
-      uoz_correction -= 2;
-      if (uoz_correction < -10) {
-        uoz_correction = -10;
-      }
-      recalcCorrectionKoeff();
-      EEPROM.write(1, uoz_correction);
-      Serial.println(uoz_correction);
+      // TODO mode down
+      // EEPROM.write(1, uoz_correction);
+      // Serial.println(uoz_correction);
     }
   }
+
   // Увеличение опережения, сокразение задержки
   if (~(PIND >> PIN_BTN_UOZ_UP) & B00000001) { // LOW
     if ((millis() - last_pressed) > 1000) {
       last_pressed = millis();
-      uoz_correction += 2;
-      if (uoz_correction > 10) {
-        uoz_correction = 10;
-      }
-      recalcCorrectionKoeff();
-      EEPROM.write(1, uoz_correction);
-      Serial.println(uoz_correction);
+      // TODO mode up
+      // EEPROM.write(1, uoz_correction);
+      // Serial.println(uoz_correction);
     }
   }
 }
@@ -389,11 +346,11 @@ void blink() { g_state = 1; }
    Блок вспомогательных функций
 */
 void oneBeep() {
-  // digitalWrite(PIN_LED_MODE, HIGH);
-  // digitalWrite(PIN_BUZZER, HIGH);
-  // delay(40);
-  // digitalWrite(PIN_LED_MODE, LOW);
-  // digitalWrite(PIN_BUZZER, LOW);
+  digitalWrite(PIN_LED_MODE, HIGH);
+  digitalWrite(PIN_BUZZER, HIGH);
+  delay(40);
+  digitalWrite(PIN_LED_MODE, LOW);
+  digitalWrite(PIN_BUZZER, LOW);
 }
 
 void doubleBeep() {
