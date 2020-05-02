@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#define VERSION "\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.4.3 01.05.2020\n"
+#define VERSION "\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.4.4 02.05.2020\n"
 /*
   Зажигание для мотоциклов ИЖ с оптическим датчиком
 
@@ -39,7 +39,7 @@
 */
 
 // Ограничитель оборотов, работает только если не равен 0
-#define MAX_RPM 5000
+#define MAX_RPM 2000
 
 // Через сколько оборотов выключить режим вспышки в ВМТ без опережения
 #define VMT_MODE_OFF_IMPULSE 100
@@ -98,6 +98,10 @@ unsigned int in_count = 0;
 
 unsigned long cur_time = 0;
 unsigned long last_time = 0;
+
+unsigned long time_off = 0;
+unsigned long time_on = 0;
+
 // время полного оборота КВ
 volatile unsigned long g_rotation_time = 92308;
 
@@ -137,6 +141,7 @@ void setup() {
   pinMode(PIN_LED_MODE, OUTPUT);
   pinMode(PIN_BUZZER, OUTPUT);
   pinMode(3, INPUT_PULLUP);
+  pinMode(4, INPUT_PULLUP);
 
   pinMode(PIN_BTN_UOZ_UP, INPUT_PULLUP);
   pinMode(PIN_BTN_UOZ_DOWN, INPUT_PULLUP);
@@ -206,16 +211,26 @@ void loop() {
       btnTick();
     }
   }
+
   for (;;) { // нормальный режим работы с УОЗ
+    cur_time = micros();
+    static bool bOffIsPending = true;
+    static bool bOnIsPending = true;
+    if (cur_time > time_off && bOffIsPending) {
+      bobbinOff; // вспышка
+      bOffIsPending = false;
+    }
+    if (cur_time > time_on && bOnIsPending) {
+      bobbinOn; // заряд
+      bOnIsPending = false;
+    }
+
     if (g_state == 1) {
       if (++in_count == PETALS) {
         in_count = 0;
-        cur_time = micros();
+        g_state = 0;
         g_rotation_time = cur_time - last_time;
         last_time = cur_time;
-        if (g_rotation_time > 92308) {
-          g_rotation_time = 92308; // RPM < 650
-        }
         // выбор времени задержки вспышки относительно
         // ВХОДА шторки модулятора, чем меньше задержка тем больше УОЗ
 
@@ -264,8 +279,14 @@ void loop() {
           g_delay_time = 10250; // RPM 800 UOZ +10,8
         } else if (g_rotation_time < 92308) {
           g_delay_time = 12890; // RPM 650 UOZ +9,73
-        } else {
-          g_delay_time = 16382;
+        } else if (g_rotation_time < 120000) {
+          g_delay_time = 17170; // RPM 500 UOZ +8,49
+        } else if (g_rotation_time < 171429) {
+          g_delay_time = 25271; // RPM 350 UOZ +6,93
+        } else if (g_rotation_time < 300000) {
+          g_delay_time = 46158; // RPM 200 UOZ +4,61
+        } else if (g_rotation_time < 1200000) {
+          g_delay_time = 195000; // RPM 50 UOZ +1,5
         }
         // КОНЕЦ БЛОКА КОДА ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
         // ######################################################
@@ -284,13 +305,11 @@ void loop() {
       }
       // Serial.println(60000000 / g_rotation_time);
 
-      g_state = 0;
-
       RPM_IF
-      delayMicroseconds(g_delay_time);
-      bobbinOff; // вспышка
-      delayMicroseconds(g_bobbin_off_time);
-      bobbinOn; // заряд
+      time_off = cur_time + g_delay_time;
+      time_on = cur_time + g_bobbin_off_time;
+      bOffIsPending = true;
+      bOnIsPending = true;
       RPM_FI
     }
 
