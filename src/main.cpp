@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#define VERSION "\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.5.0 02.05.2020\n"
+#define VERSION "\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.5.1 02.05.2020\n"
 /*
   Зажигание для мотоциклов ИЖ с оптическим датчиком
 
@@ -18,19 +18,16 @@
 
   PIN_BTN_UOZ_UP
   - отвечает за вход в режим корректировки УОЗ
-  - в режиме корректировки УОЗ увеличивает корректировку УОЗ
+  - в режиме корректировки УОЗ увеличивает УОЗ
 
   PIN_BTN_UOZ_DOWN
   - отвечает за вход в режим установки начального УОЗ (настройка шторки)
   - в режиме настройки кторки переключает режим оповещения
-  - в режиме корректировки УОЗ уменьшает корректировку УОЗ
+  - в режиме корректировки УОЗ уменьшает УОЗ
 
-  Двойной сигнал при включении - режим корректировки УОЗ,
-  в этом режиме работают кнопки корректировки УОЗ можно
-  корректировать на заведенном двигателе, после установки
-  перезапустить arduino для снижения задержек
+  Двойной сигнал при включении - вход в режим корректировки УОЗ,
 
-  Четверной сигнал при включении - режим установки УОЗ (настройка шторки)
+  Четверной сигнал при включении - вход режим установки УОЗ (настройка шторки)
   в этом режиме при сработке датчика будет пищать динамик и загораться
   диод состояния, кнопка PIN_BTN_UOZ_DOWN переключает режим оповещения
 
@@ -109,7 +106,7 @@ bool g_vmt_mode = true;
 bool g_installation_mode = false;
 
 // флаг доступности кнопок корректировки УОЗ
-bool g_btn_uoz_enabled = false;
+bool g_uoz_setting_mode = false;
 
 // режим формирования УОЗ (-1|0|1)
 int uoz_mode = 0;
@@ -142,10 +139,10 @@ void setup() {
   pinMode(PIN_BTN_UOZ_DOWN, INPUT_PULLUP);
   delay(1000);
 
-  // проверка пина включения кнопок корректировки УОЗ
+  // проверка пина включения режима настройки формирования УОЗ
   if (digitalRead(PIN_BTN_UOZ_UP) == LOW) {
-    g_btn_uoz_enabled = true;
-    Serial.println("\nUOZ CORRECTION MODE\n");
+    g_uoz_setting_mode = true;
+    Serial.println("\nUOZ SETTING MODE\n");
     doubleBeep();
     delay(2000);
   }
@@ -161,7 +158,7 @@ void setup() {
   }
 
   uoz_mode = EEPROM.read(1);
-  uoz_mode = constrain(uoz_mode, -1, 1);
+  uoz_mode = constrain(uoz_mode, 0, 2);
   Serial.print("UOZ mode : ");
   Serial.println(uoz_mode, DEC);
 
@@ -184,6 +181,11 @@ void loop() {
     }
   }
 
+  if (g_uoz_setting_mode == true) { // режим настройки формирования УОЗ
+    for (;;) {
+      btnTick();
+    }
+  }
   for (;;) { // нормальный режим работы с УОЗ
     if (g_state == 1) {
       if (g_vmt_mode) { // режим искры в ВМТ по границе ВЫХОДА шторки
@@ -320,9 +322,12 @@ void btnTick() {
   if (~(PIND >> PIN_BTN_UOZ_DOWN) & B00000001) { // LOW
     if ((millis() - last_pressed) > 1000) {
       last_pressed = millis();
-      // TODO mode down
-      // EEPROM.write(1, uoz_correction);
-      // Serial.println(uoz_correction);
+      if (uoz_mode > 0) {
+        uoz_mode--;
+        EEPROM.write(1, uoz_mode);
+      }
+      // TODO сделать сигнал
+      Serial.println(uoz_mode);
     }
   }
 
@@ -330,9 +335,12 @@ void btnTick() {
   if (~(PIND >> PIN_BTN_UOZ_UP) & B00000001) { // LOW
     if ((millis() - last_pressed) > 1000) {
       last_pressed = millis();
-      // TODO mode up
-      // EEPROM.write(1, uoz_correction);
-      // Serial.println(uoz_correction);
+      if (uoz_mode < 2) {
+        uoz_mode++;
+        EEPROM.write(1, uoz_mode);
+      }
+      // TODO сделать сигнал
+      Serial.println(uoz_mode);
     }
   }
 }
