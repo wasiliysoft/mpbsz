@@ -1,6 +1,6 @@
 #include <Arduino.h>
 #include <EEPROM.h>
-#define VERSION "\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.5.1 02.05.2020\n"
+#define VERSION "\nMPBSZ IZH YUPITER 5 BY WASILIYSOFT v0.5.1 03.05.2020\n"
 /*
   Зажигание для мотоциклов ИЖ с оптическим датчиком
 
@@ -188,6 +188,7 @@ void loop() {
   }
   for (;;) { // нормальный режим работы с УОЗ
     if (g_state == 1) {
+      cur_time = micros();
       if (g_vmt_mode) { // режим искры в ВМТ по границе ВЫХОДА шторки
         bobbinOffVMT; // вспышка
         delay(4); // продолжительность простоя катушки
@@ -216,19 +217,18 @@ void loop() {
         RPM_FI
       }
       if (++p == PETALS) {
-        cur_time = micros();
-        g_rotation_time = (unsigned long)(cur_time - last_time);
-        if (g_rotation_time > 100000) {
-          vmtMode(true); // переводим в режим ВМТ
-        }
-
-        last_time = cur_time;
         p = 0;
+        g_rotation_time = (unsigned long)(cur_time - last_time);
+        if (g_rotation_time > 100000)
+          vmtMode(true); // переводим в режим ВМТ
+        last_time = cur_time;
+
+        // расчет времени простоя катушки
+        // делаем сдвиг на 3, получаем время 360/8 = 45 градусов
+        g_bobbin_off_time = g_rotation_time >> 3;
 
         // выбор времени задержки вспышки относительно
         // ВХОДА шторки модулятора, чем меньше задержка тем больше УОЗ
-
-        // ######################################################
         // ######################################################
         // СЮДА ВСТАВЛЯЕТСЯ КОД ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
         if (g_rotation_time < 10000) {
@@ -285,14 +285,6 @@ void loop() {
 
         // КОНЕЦ БЛОКА КОДА ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
         // ######################################################
-        // ######################################################
-
-        // расчет времени простоя катушки
-        // время оборота КВ (360 градусов) делим на 6
-        // получаем время простоя соответствующее 60 градусам
-        // g_bobbin_off_time = (long)(g_rotation_time / 6);
-        // делаем сдвиг на 3, получаем время 360/8 = 45 градусов
-        g_bobbin_off_time = g_rotation_time >> 3;
       }
       g_state = 0;
     }
