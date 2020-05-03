@@ -45,20 +45,21 @@
 #define PETALS 2
 
 // Номер версии схемы сборки
-#define REVISION 2
+#define REVISION 3
 
 //---- КОНСТАНТЫ ПИНОВ
 #if REVISION == 2
 #define PIN_BTN_UOZ_DOWN 5 // пин кнопки уменьшения угла опережения
 #define PIN_BTN_UOZ_UP 6 // пин кнопки увеличения угла опережения
+#define PIN_BUZZER A5 // пин динамика
 #elif REVISION == 3
 #define PIN_BTN_UOZ_DOWN 4 // пин кнопки уменьшения угла опережения
 #define PIN_BTN_UOZ_UP 7 // пин кнопки увеличения угла опережения
+#define PIN_BUZZER 5 // пин динамика
 #endif
 
 #define PIN_LED_MODE 12 // пин светодиода индикации режима работы
-#define PIN_BUZZER A5 // пин динамика
-#define PIN_BOBBIN 8  // пин катушки
+#define PIN_BOBBIN 8 // пин катушки
 
 //---- КОНСТАНТЫ ПЕРЕКЛЮЧЕНИЯ ПОРТОВ
 // байт включения катушки (большой диод горит)
@@ -300,8 +301,12 @@ void installation_mode() {
     delay(500);
   }
   if (digitalRead(3) == beepMode) {
-    digitalWrite(PIN_LED_MODE, HIGH);
+#if REVISION == 2
     digitalWrite(PIN_BUZZER, HIGH);
+#elif REVISION == 3
+    analogWrite(PIN_BUZZER, 1);
+#endif
+    digitalWrite(PIN_LED_MODE, HIGH);
   } else {
     digitalWrite(PIN_BUZZER, LOW);
     digitalWrite(PIN_LED_MODE, LOW);
