@@ -138,7 +138,6 @@ void setup() {
 
   pinMode(PIN_BTN_UOZ_UP, INPUT_PULLUP);
   pinMode(PIN_BTN_UOZ_DOWN, INPUT_PULLUP);
-  delay(1000);
 
   // проверка пина включения режима настройки формирования УОЗ
   if (digitalRead(PIN_BTN_UOZ_UP) == LOW) {
