@@ -231,58 +231,58 @@ void loop() {
         // ВХОДА шторки модулятора, чем меньше задержка тем больше УОЗ
         // ######################################################
         // СЮДА ВСТАВЛЯЕТСЯ КОД ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
-        if (g_rotation_time < 10000) {
-          g_delay_time = 956; // RPM 6000 UOZ +25,58
-        } else if (g_rotation_time < 10909) {
-          g_delay_time = 1064; // RPM 5500 UOZ +24,88
-        } else if (g_rotation_time < 12000) {
-          g_delay_time = 1195; // RPM 5000 UOZ +24,15
-        } else if (g_rotation_time < 13333) {
-          g_delay_time = 1356; // RPM 4500 UOZ +23,39
+        // График САРУМАН обычный
+        if (g_rotation_time < 12000) {
+          g_delay_time = 1393; // RPM 5000 UOZ +18,2
+        } else if (g_rotation_time < 12500) {
+          g_delay_time = 1456; // RPM 4800 UOZ +18,08
+        } else if (g_rotation_time < 13043) {
+          g_delay_time = 1523; // RPM 4600 UOZ +17,96
+        } else if (g_rotation_time < 13636) {
+          g_delay_time = 1597; // RPM 4400 UOZ +17,84
+        } else if (g_rotation_time < 14286) {
+          g_delay_time = 1678; // RPM 4200 UOZ +17,72
         } else if (g_rotation_time < 15000) {
-          g_delay_time = 1558; // RPM 4000 UOZ +22,6
-        } else if (g_rotation_time < 17143) {
-          g_delay_time = 1821; // RPM 3500 UOZ +21,76
-        } else if (g_rotation_time < 18462) {
-          g_delay_time = 1996; // RPM 3250 UOZ +21,07
+          g_delay_time = 1767; // RPM 4000 UOZ +17,6
+        } else if (g_rotation_time < 15789) {
+          g_delay_time = 1865; // RPM 3800 UOZ +17,48
+        } else if (g_rotation_time < 16667) {
+          g_delay_time = 1974; // RPM 3600 UOZ +17,36
+        } else if (g_rotation_time < 17647) {
+          g_delay_time = 2096; // RPM 3400 UOZ +17,24
+        } else if (g_rotation_time < 18750) {
+          g_delay_time = 2233; // RPM 3200 UOZ +17,12
         } else if (g_rotation_time < 20000) {
-          g_delay_time = 2202; // RPM 3000 UOZ +20,37
-        } else if (g_rotation_time < 21818) {
-          g_delay_time = 2445; // RPM 2750 UOZ +19,65
-        } else if (g_rotation_time < 24000) {
-          g_delay_time = 2740; // RPM 2500 UOZ +18,9
-        } else if (g_rotation_time < 26667) {
-          g_delay_time = 3102; // RPM 2250 UOZ +18,13
+          g_delay_time = 2483; // RPM 3000 UOZ +15,3
+        } else if (g_rotation_time < 21429) {
+          g_delay_time = 2668; // RPM 2800 UOZ +15,18
+        } else if (g_rotation_time < 23077) {
+          g_delay_time = 2881; // RPM 2600 UOZ +15,06
+        } else if (g_rotation_time < 25000) {
+          g_delay_time = 3129; // RPM 2400 UOZ +14,94
+        } else if (g_rotation_time < 27273) {
+          g_delay_time = 3423; // RPM 2200 UOZ +14,82
         } else if (g_rotation_time < 30000) {
-          g_delay_time = 3557; // RPM 2000 UOZ +17,32
-        } else if (g_rotation_time < 32432) {
-          g_delay_time = 3910; // RPM 1850 UOZ +16,6
-        } else if (g_rotation_time < 35294) {
-          g_delay_time = 4326; // RPM 1700 UOZ +15,87
-        } else if (g_rotation_time < 38710) {
-          g_delay_time = 4827; // RPM 1550 UOZ +15,11
+          g_delay_time = 3975; // RPM 2000 UOZ +12,3
+        } else if (g_rotation_time < 33333) {
+          g_delay_time = 4504; // RPM 1800 UOZ +11,36
+        } else if (g_rotation_time < 37500) {
+          g_delay_time = 5165; // RPM 1600 UOZ +10,42
         } else if (g_rotation_time < 42857) {
-          g_delay_time = 5437; // RPM 1400 UOZ +14,33
-        } else if (g_rotation_time < 48000) {
-          g_delay_time = 6197; // RPM 1250 UOZ +13,52
-        } else if (g_rotation_time < 54545) {
-          g_delay_time = 7171; // RPM 1100 UOZ +12,67
-        } else if (g_rotation_time < 63158) {
-          g_delay_time = 8461; // RPM 950 UOZ +11,77
+          g_delay_time = 6014; // RPM 1400 UOZ +9,48
+        } else if (g_rotation_time < 50000) {
+          g_delay_time = 7147; // RPM 1200 UOZ +8,54
+        } else if (g_rotation_time < 60000) {
+          g_delay_time = 8733; // RPM 1000 UOZ +7,6
         } else if (g_rotation_time < 75000) {
-          g_delay_time = 10250; // RPM 800 UOZ +10,8
-        } else if (g_rotation_time < 92308) {
-          g_delay_time = 12890; // RPM 650 UOZ +9,73
-        } else if (g_rotation_time < 120000) {
-          g_delay_time = 17170; // RPM 500 UOZ +8,49
-        } else if (g_rotation_time < 171429) {
-          g_delay_time = 25271; // RPM 350 UOZ +6,93
+          g_delay_time = 11233; // RPM 800 UOZ +6,08
+        } else if (g_rotation_time < 100000) {
+          g_delay_time = 15400; // RPM 600 UOZ +4,56
+        } else if (g_rotation_time < 150000) {
+          g_delay_time = 23733; // RPM 400 UOZ +3,04
         } else if (g_rotation_time < 300000) {
-          g_delay_time = 46158; // RPM 200 UOZ +4,61
-        } else if (g_rotation_time < 1200000) {
-          g_delay_time = 195000; // RPM 50 UOZ +1,5
+          g_delay_time = 48733; // RPM 200 UOZ +1,52
         }
-
         // КОНЕЦ БЛОКА КОДА ИЗ ТАБЛИЦЫ РАСЧЕТА УОЗ
         // ######################################################
       }
